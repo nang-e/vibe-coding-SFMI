@@ -16,20 +16,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (const stock of stocks as Stock[]) {
     try {
       const quote = await fetchLatestQuote(stock.ticker);
-      await supabase.from('intraday_quotes').insert({
+      const { error: intradayError } = await supabase.from('intraday_quotes').insert({
         stock_id: stock.id,
         price: quote.price,
         change_pct: quote.changePct,
       });
+      if (intradayError) throw new Error(`intraday insert failed: ${intradayError.message}`);
       results.updatedIntraday++;
 
-      const closes = await fetchDailyCloses(stock.ticker, 5);
-      for (let i = 0; i < closes.length; i++) {
-        const changePct = i === 0 ? null : ((closes[i].close - closes[i - 1].close) / closes[i - 1].close) * 100;
-        await supabase.from('price_history').upsert(
+      const closes = await fetchDailyCloses(stock.ticker, 6);
+      for (let i = 1; i < closes.length; i++) {
+        const changePct = ((closes[i].close - closes[i - 1].close) / closes[i - 1].close) * 100;
+        const { error: upsertError } = await supabase.from('price_history').upsert(
           { stock_id: stock.id, date: closes[i].date, close_price: closes[i].close, change_pct: changePct },
           { onConflict: 'stock_id,date' },
         );
+        if (upsertError) throw new Error(`price_history upsert failed for ${closes[i].date}: ${upsertError.message}`);
       }
       results.updatedDaily++;
     } catch (err) {
