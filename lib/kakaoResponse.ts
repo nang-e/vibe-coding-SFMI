@@ -5,7 +5,7 @@ export interface KakaoResponse {
   data?: { text: string };
 }
 
-const DISCLAIMER = '\n\n(투자 참고용이며 투자 판단과 책임은 본인에게 있습니다)';
+const DISCLAIMER = '\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.';
 
 export function simpleTextResponse(text: string, withDisclaimer = false): KakaoResponse {
   return {

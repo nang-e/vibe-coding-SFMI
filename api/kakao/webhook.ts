@@ -52,12 +52,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!callbackUrl) return;
 
   waitUntil(
-    buildAnswer(utterance).then((answer) =>
-      fetch(callbackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(simpleTextResponse(answer, true)),
+    buildAnswer(utterance)
+      .then((answer) =>
+        fetch(callbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(simpleTextResponse(answer, true)),
+        }),
+      )
+      .catch((err) => {
+        console.error('kakao webhook background failure:', err);
+        return fetch(callbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            simpleTextResponse('죄송해요, 지금 답변을 만드는 중 문제가 생겼어요. 잠시 후 다시 물어봐 주세요.'),
+          ),
+        }).catch(() => {}); // best effort — nothing more to do if even the error callback fails
       }),
-    ),
   );
 }

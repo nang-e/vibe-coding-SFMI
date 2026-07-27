@@ -8,6 +8,17 @@ describe('simpleTextResponse', () => {
       template: { outputs: [{ simpleText: { text: '안녕' } }] },
     });
   });
+
+  it('appends the exact disclaimer sentence when withDisclaimer is true', () => {
+    expect(simpleTextResponse('답변', true)).toEqual({
+      version: '2.0',
+      template: {
+        outputs: [
+          { simpleText: { text: '답변\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.' } },
+        ],
+      },
+    });
+  });
 });
 
 describe('callbackAckResponse', () => {

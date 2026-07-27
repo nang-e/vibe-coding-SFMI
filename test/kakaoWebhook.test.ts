@@ -84,4 +84,45 @@ describe('kakao webhook handler', () => {
     });
     expect(parsedBody.template.outputs[0].simpleText.text).toContain('지금 반도체 테마가 좋아요');
   });
+
+  it('still posts a fallback error message to callbackUrl when the background work throws', async () => {
+    mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
+    mockCreate.mockImplementationOnce(async () => {
+      throw new Error('claude unavailable');
+    });
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = {
+      method: 'POST',
+      body: {
+        userRequest: {
+          utterance: '오늘 뭐 사',
+          callbackUrl: 'https://bot-api.kakao.com/callback/def',
+        },
+      },
+    } as any;
+    const json = vi.fn();
+    const res = { status: vi.fn(() => ({ json })) } as any;
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+
+    await Promise.all(capturedBackgroundPromises.map((p) => p.catch(() => {})));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://bot-api.kakao.com/callback/def');
+    expect(options.method).toBe('POST');
+
+    const parsedBody = JSON.parse(options.body);
+    expect(parsedBody.template.outputs[0].simpleText.text).toContain(
+      '죄송해요, 지금 답변을 만드는 중 문제가 생겼어요. 잠시 후 다시 물어봐 주세요.',
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
 });
