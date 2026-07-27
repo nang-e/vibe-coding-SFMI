@@ -11,7 +11,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: themes, error: themesError } = await supabase.from('themes').select('*');
   if (themesError) return res.status(500).json({ error: themesError.message });
 
-  const { data: taggedNewsIds } = await supabase.from('news_tags').select('news_item_id');
+  const { data: taggedNewsIds, error: taggedError } = await supabase.from('news_tags').select('news_item_id');
+  if (taggedError) return res.status(500).json({ error: taggedError.message });
   const taggedIds = new Set((taggedNewsIds ?? []).map((r) => r.news_item_id));
 
   const { data: allNews, error: newsError } = await supabase
