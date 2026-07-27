@@ -48,11 +48,14 @@ export async function run(): Promise<{ checked: number; failures: string[] }> {
         ? '예상 범위 내로 적중'
         : `예상 범위(${prediction.range_low}~${prediction.range_high}%)를 벗어남`;
 
-      const { error: insertError } = await supabase.from('prediction_feedback').insert({
-        prediction_id: prediction.id,
-        actual_change_pct: actualChangePct,
-        accuracy_note: accuracyNote,
-      });
+      const { error: insertError } = await supabase.from('prediction_feedback').upsert(
+        {
+          prediction_id: prediction.id,
+          actual_change_pct: actualChangePct,
+          accuracy_note: accuracyNote,
+        },
+        { onConflict: 'prediction_id' },
+      );
       if (insertError) throw new Error(`prediction_feedback insert failed: ${insertError.message}`);
 
       const { error: updateError } = await supabase

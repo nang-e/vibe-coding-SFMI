@@ -1,0 +1,1 @@
+alter table prediction_feedback add constraint prediction_feedback_prediction_id_key unique (prediction_id);
