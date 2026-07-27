@@ -46,7 +46,7 @@ Confirm the returned project is `ACTIVE_HEALTHY` before continuing (Supabase pro
 
 ```bash
 npm init -y
-npm install @supabase/supabase-js @anthropic-ai/sdk rss-parser dotenv
+npm install @supabase/supabase-js @anthropic-ai/sdk @vercel/functions rss-parser dotenv
 npm install -D typescript vitest @types/node @vercel/node tsx
 ```
 
@@ -608,7 +608,7 @@ const naverResponse = {
 };
 
 const rssXml = `<?xml version="1.0"?>
-<rss><channel>
+<rss version="2.0"><channel>
   <item>
     <title>Bird flu spreads across farms</title>
     <link>https://bbc.com/b</link>
@@ -1415,6 +1415,7 @@ git commit -m "feat: add single pipeline endpoint orchestrating collection, tagg
 **Interfaces:**
 - Consumes: `getSupabase`, `getClaude`, `REASONING_MODEL` (Tasks 2, 4)
 - Produces: `simpleTextResponse(text: string): KakaoResponse`, `callbackAckResponse(text: string): KakaoResponse` — the exact JSON shapes Kakao's i 오픈빌더 expects. **Re-verify these two shapes against Kakao's current skill-response docs before wiring up the real channel** (spec §10) — field names have changed between Kakao platform versions in the past.
+- Design note (satisfies the Global Constraint on the 5-second Kakao timeout): the webhook handler ALWAYS acknowledges immediately with `callbackAckResponse` and does the real Supabase + Claude work afterward via Vercel's `waitUntil`, POSTing the final `simpleTextResponse` to `req.body.userRequest.callbackUrl`. This sidesteps any race against the 5s limit entirely rather than trying to beat it — it requires the Kakao channel's callback feature to be enabled (Task 9's setup guide covers this).
 
 - [ ] **Step 1: Write failing test for response builders**
 
@@ -1458,7 +1459,7 @@ export interface KakaoResponse {
   data?: { text: string };
 }
 
-const DISCLAIMER = '\n\n(투자 참고용이며 투자 판단과 책임은 본인에게 있습니다)';
+const DISCLAIMER = '\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.';
 
 export function simpleTextResponse(text: string, withDisclaimer = false): KakaoResponse {
   return {
@@ -1492,6 +1493,11 @@ vi.mock('../lib/claudeClient', () => ({
   REASONING_MODEL: 'claude-sonnet-5',
 }));
 
+const capturedBackgroundPromises: Promise<any>[] = [];
+vi.mock('@vercel/functions', () => ({
+  waitUntil: (p: Promise<any>) => { capturedBackgroundPromises.push(p); },
+}));
+
 import handler from '../api/kakao/webhook';
 
 function chainable(result: any) {
@@ -1506,7 +1512,7 @@ function chainable(result: any) {
 }
 
 describe('kakao webhook handler', () => {
-  it('returns a simpleText response built from recent predictions and quotes', async () => {
+  it('acknowledges immediately via callback, then posts the real answer to callbackUrl', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'predictions') return chainable({ data: [{ reasoning: '축산업 하락 가능', direction: 'down', range_low: -4, range_high: -2 }], error: null });
       if (table === 'intraday_quotes') return chainable({ data: [], error: null });
@@ -1514,19 +1520,42 @@ describe('kakao webhook handler', () => {
       return chainable({ data: [], error: null });
     });
 
-    const req = { method: 'POST', body: { userRequest: { utterance: '실시간 흐름이랑 예상하락종목 알려줘' } } } as any;
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = {
+      method: 'POST',
+      body: { userRequest: { utterance: '실시간 흐름이랑 예상하락종목 알려줘', callbackUrl: 'https://bot-api.kakao.com/callback/abc' } },
+    } as any;
     const json = vi.fn();
     const res = { status: vi.fn(() => ({ json })) } as any;
 
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({
-      template: { outputs: [{ simpleText: { text: expect.stringContaining('투자 참고용') } }] },
-    }));
+    expect(json).toHaveBeenCalledWith({
+      version: '2.0',
+      useCallback: true,
+      data: { text: '분석 중이에요, 잠시만 기다려주세요' },
+    });
+
+    await Promise.all(capturedBackgroundPromises);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://bot-api.kakao.com/callback/abc',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          version: '2.0',
+          template: { outputs: [{ simpleText: { text: expect.stringContaining('투자 참고용') } }] },
+        }),
+      }),
+    );
   });
 });
 ```
+
+Note: the `body` assertion above uses `expect.stringContaining` inside a value that's already been `JSON.stringify`'d by the real code, so the exact string won't match via `toHaveBeenCalledWith`'s deep-equality on that nested string — when writing this test for real, assert on the parsed body instead: `JSON.parse(fetchMock.mock.calls[0][1].body)` and check that object with `toEqual`/`toContain` rather than comparing raw JSON strings.
 
 - [ ] **Step 6: Run test to verify it fails**
 
@@ -1535,16 +1564,16 @@ Expected: FAIL — `api/kakao/webhook` does not exist yet.
 
 - [ ] **Step 7: Implement `api/kakao/webhook.ts`**
 
-Given personal-MVP scope (single user, no intent routing needed), every message triggers the same "current snapshot" lookup — this keeps the handler simple and avoids building unnecessary intent classification (YAGNI).
+Given personal-MVP scope (single user, no intent routing needed), every message triggers the same "current snapshot" lookup — this keeps the handler simple and avoids building unnecessary intent classification (YAGNI). The handler always acknowledges immediately and defers the real work to `waitUntil`, so it can never violate Kakao's 5-second response limit regardless of how long Supabase/Claude take.
 
 ```typescript
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { waitUntil } from '@vercel/functions';
 import { getSupabase } from '../../lib/supabaseClient';
 import { getClaude, REASONING_MODEL } from '../../lib/claudeClient';
-import { simpleTextResponse } from '../../lib/kakaoResponse';
+import { simpleTextResponse, callbackAckResponse } from '../../lib/kakaoResponse';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const utterance: string = req.body?.userRequest?.utterance ?? '';
+async function buildAnswer(utterance: string): Promise<string> {
   const supabase = getSupabase();
 
   const [{ data: predictions }, { data: quotes }, { data: tags }] = await Promise.all([
@@ -1578,8 +1607,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const answer = textBlock?.text ?? '지금은 답변을 만들지 못했어요, 잠시 후 다시 물어봐 주세요.';
 
   await supabase.from('kakao_conversations').insert({ question: utterance, answer });
+  return answer;
+}
 
-  return res.status(200).json(simpleTextResponse(answer, true));
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const utterance: string = req.body?.userRequest?.utterance ?? '';
+  const callbackUrl: string | undefined = req.body?.userRequest?.callbackUrl;
+
+  res.status(200).json(callbackAckResponse('분석 중이에요, 잠시만 기다려주세요'));
+
+  // Requires the Kakao channel's callback feature to be enabled (see docs/kakao-setup-guide.md step 5) —
+  // without a callbackUrl there's nowhere to deliver the real answer, so we stop after the ack.
+  if (!callbackUrl) return;
+
+  waitUntil(
+    buildAnswer(utterance).then((answer) =>
+      fetch(callbackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(simpleTextResponse(answer, true)),
+      }),
+    ),
+  );
 }
 ```
 
@@ -1828,3 +1877,6 @@ git commit -m "chore: add deployment config and Kakao channel setup guide"
 - **Spec coverage:** §3 (collector) → Tasks 2–3; §3 (analyzer/predictor) → Tasks 4–5; §3 (Kakao webhook) → Task 7; §3 (feedback checker) → Task 8; §4 (data model) → Task 1; §5 (data flows A/B/C) → Tasks 2–8 combined via Task 6's pipeline; §6 (error handling) → try/catch-per-item throughout, low-sample handling in Task 5, 5s/callback handling flagged in Task 7; §7 (testing) → a Vitest suite per task; §8 (deploy & security) → Task 9, `.env`/`.gitignore` in Task 1. §9 (Phase 2–4) intentionally has no task — out of scope for this plan.
 - **Type consistency check:** `Theme`, `Stock`, `Prediction` etc. from `lib/types.ts` (Task 1) are the only shapes referenced by name across Tasks 2–8; `RawNewsItem` (Task 3) and `TagResult`/`PredictionDraft` (Tasks 4–5) are scoped to their own modules and consumed only by the adjacent cron endpoint, so no cross-task naming drift.
 - **Placeholder scan:** no TBD/TODO remain; the two explicit "확인 필요" call-outs (RSS feed URLs in Task 3, Kakao response-shape docs in Task 7) are pre-existing spec-level uncertainties (spec §10), not unfinished plan steps — both still have concrete, runnable code.
+- **Post-Task-7-review fix (2026-07-27):** Task 7's `DISCLAIMER` constant used parentheses and no trailing period, which didn't literally match the Global Constraints section's exact required disclaimer string. Fixed the plan's code sample to the exact mandated text.
+- **Post-Task-3-review fix (2026-07-27):** Task 3's `rssXml` test fixture was missing `version="2.0"` on the `<rss>` tag, which made `rss-parser` throw "Feed not recognized as RSS 1 or 2." — a real bug in the plan's own test data, not an implementer error. Fixed the fixture in this plan file directly.
+- **Pre-flight conflict fix (2026-07-27, before Task 1 dispatch):** Task 7's first draft called Claude synchronously and returned `simpleTextResponse` directly, which conflicts with the Global Constraint requiring the 5-second Kakao timeout to be respected via the callback pattern. Rewrote Task 7 (Interfaces note, Step 5 test, Step 7 implementation) so the handler always acknowledges via `callbackAckResponse` first and defers the real work to `waitUntil` + a callback POST — this is a correction to the plan's own text, not a user-facing ambiguity, so it was fixed directly rather than escalated.

@@ -1,0 +1,16 @@
+import { describe, it, expect } from 'vitest';
+import { requireCronSecret } from '../lib/auth';
+
+describe('requireCronSecret', () => {
+  it('rejects a request with the wrong secret', () => {
+    process.env.CRON_SECRET = 'correct-secret';
+    const req = { headers: { 'x-cron-secret': 'wrong' } } as any;
+    expect(requireCronSecret(req)).toBe(false);
+  });
+
+  it('accepts a request with the correct secret', () => {
+    process.env.CRON_SECRET = 'correct-secret';
+    const req = { headers: { 'x-cron-secret': 'correct-secret' } } as any;
+    expect(requireCronSecret(req)).toBe(true);
+  });
+});
