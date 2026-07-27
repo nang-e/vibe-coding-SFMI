@@ -608,7 +608,7 @@ const naverResponse = {
 };
 
 const rssXml = `<?xml version="1.0"?>
-<rss><channel>
+<rss version="2.0"><channel>
   <item>
     <title>Bird flu spreads across farms</title>
     <link>https://bbc.com/b</link>
@@ -1877,4 +1877,5 @@ git commit -m "chore: add deployment config and Kakao channel setup guide"
 - **Spec coverage:** §3 (collector) → Tasks 2–3; §3 (analyzer/predictor) → Tasks 4–5; §3 (Kakao webhook) → Task 7; §3 (feedback checker) → Task 8; §4 (data model) → Task 1; §5 (data flows A/B/C) → Tasks 2–8 combined via Task 6's pipeline; §6 (error handling) → try/catch-per-item throughout, low-sample handling in Task 5, 5s/callback handling flagged in Task 7; §7 (testing) → a Vitest suite per task; §8 (deploy & security) → Task 9, `.env`/`.gitignore` in Task 1. §9 (Phase 2–4) intentionally has no task — out of scope for this plan.
 - **Type consistency check:** `Theme`, `Stock`, `Prediction` etc. from `lib/types.ts` (Task 1) are the only shapes referenced by name across Tasks 2–8; `RawNewsItem` (Task 3) and `TagResult`/`PredictionDraft` (Tasks 4–5) are scoped to their own modules and consumed only by the adjacent cron endpoint, so no cross-task naming drift.
 - **Placeholder scan:** no TBD/TODO remain; the two explicit "확인 필요" call-outs (RSS feed URLs in Task 3, Kakao response-shape docs in Task 7) are pre-existing spec-level uncertainties (spec §10), not unfinished plan steps — both still have concrete, runnable code.
+- **Post-Task-3-review fix (2026-07-27):** Task 3's `rssXml` test fixture was missing `version="2.0"` on the `<rss>` tag, which made `rss-parser` throw "Feed not recognized as RSS 1 or 2." — a real bug in the plan's own test data, not an implementer error. Fixed the fixture in this plan file directly.
 - **Pre-flight conflict fix (2026-07-27, before Task 1 dispatch):** Task 7's first draft called Claude synchronously and returned `simpleTextResponse` directly, which conflicts with the Global Constraint requiring the 5-second Kakao timeout to be respected via the callback pattern. Rewrote Task 7 (Interfaces note, Step 5 test, Step 7 implementation) so the handler always acknowledges via `callbackAckResponse` first and defers the real work to `waitUntil` + a callback POST — this is a correction to the plan's own text, not a user-facing ambiguity, so it was fixed directly rather than escalated.
