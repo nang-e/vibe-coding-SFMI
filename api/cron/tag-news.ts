@@ -4,15 +4,13 @@ import { tagNewsItem } from '../../lib/tagNews';
 import { requireCronSecret } from '../../lib/auth';
 import type { Theme } from '../../lib/types';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
-
+export async function run() {
   const supabase = getSupabase();
   const { data: themes, error: themesError } = await supabase.from('themes').select('*');
-  if (themesError) return res.status(500).json({ error: themesError.message });
+  if (themesError) throw new Error(themesError.message);
 
   const { data: taggedNewsIds, error: taggedError } = await supabase.from('news_tags').select('news_item_id');
-  if (taggedError) return res.status(500).json({ error: taggedError.message });
+  if (taggedError) throw new Error(taggedError.message);
   const taggedIds = new Set((taggedNewsIds ?? []).map((r) => r.news_item_id));
 
   const { data: allNews, error: newsError } = await supabase
@@ -20,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .select('*')
     .order('collected_at', { ascending: false })
     .limit(200);
-  if (newsError) return res.status(500).json({ error: newsError.message });
+  if (newsError) throw new Error(newsError.message);
 
   const untagged = (allNews ?? []).filter((n) => !taggedIds.has(n.id));
   const results = { tagged: 0, noThemeFound: 0, failures: [] as string[] };
@@ -52,5 +50,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json(results);
+  return results;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  try {
+    const result = await run();
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
 }

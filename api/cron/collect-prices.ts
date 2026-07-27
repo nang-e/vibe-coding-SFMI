@@ -4,12 +4,10 @@ import { fetchDailyCloses, fetchLatestQuote } from '../../lib/priceClient';
 import { requireCronSecret } from '../../lib/auth';
 import type { Stock } from '../../lib/types';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
-
+export async function run() {
   const supabase = getSupabase();
   const { data: stocks, error } = await supabase.from('stocks').select('*');
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) throw new Error(error.message);
 
   const results = { updatedDaily: 0, updatedIntraday: 0, failures: [] as string[] };
 
@@ -39,5 +37,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json(results);
+  return results;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  try {
+    const result = await run();
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
 }

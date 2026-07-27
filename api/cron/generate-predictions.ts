@@ -6,9 +6,7 @@ import { requireCronSecret } from '../../lib/auth';
 
 const CHECK_AFTER_DAYS = 3;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
-
+export async function run() {
   const supabase = getSupabase();
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // last hour of tags
   const { data: recentTags, error } = await supabase
@@ -16,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .select('theme_id, sentiment, reasoning, themes(name), news_items(title)')
     .neq('sentiment', 'neutral')
     .gte('created_at', since);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) throw new Error(error.message);
 
   const byTheme = new Map<string, { name: string; sentiment: string; summaries: string[] }>();
   for (const tag of recentTags ?? []) {
@@ -49,5 +47,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json(results);
+  return results;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  try {
+    const result = await run();
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
 }

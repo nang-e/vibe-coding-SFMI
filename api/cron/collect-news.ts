@@ -9,9 +9,7 @@ const RSS_FEEDS = [
   { url: 'https://www.marketwatch.com/rss/topstories', source: 'marketwatch' },
 ];
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
-
+export async function run() {
   const supabase = getSupabase();
   const results = { inserted: 0, skipped: 0, failures: [] as string[] };
 
@@ -37,5 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json(results);
+  return results;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const result = await run();
+  return res.status(200).json(result);
 }
