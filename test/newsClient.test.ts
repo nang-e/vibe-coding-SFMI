@@ -14,7 +14,7 @@ const naverResponse = {
 };
 
 const rssXml = `<?xml version="1.0"?>
-<rss><channel>
+<rss version="2.0"><channel>
   <item>
     <title>Bird flu spreads across farms</title>
     <link>https://bbc.com/b</link>

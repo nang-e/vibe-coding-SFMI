@@ -1,5 +1,4 @@
 import Parser from 'rss-parser';
-import { parseStringPromise } from 'xml2js';
 
 export interface RawNewsItem {
   source: string;
@@ -32,50 +31,15 @@ export async function fetchRssFeed(url: string, source: string): Promise<RawNews
   const res = await fetch(url);
   if (!res.ok) throw new Error(`RSS fetch failed for ${source}: ${res.status}`);
   const xml = await res.text();
-
-  try {
-    const parser = new Parser();
-    const feed = await parser.parseString(xml);
-    const items = feed.items ?? [];
-
-    // If rss-parser succeeds but returns no items, try fallback parsing
-    if (items.length === 0) {
-      const parsed = await parseStringPromise(xml, { strict: false });
-      const channel = (parsed as any).RSS?.CHANNEL?.[0];
-      if (!channel) return [];
-      const channelItems = channel.ITEM || [];
-      const itemArray = Array.isArray(channelItems) ? channelItems : channelItems ? [channelItems] : [];
-      return itemArray.map((item: any) => ({
-        source,
-        url: (item.LINK?.[0] ?? '') as string,
-        title: (item.TITLE?.[0] ?? '') as string,
-        summary: (item.DESCRIPTION?.[0] ?? null) as string | null,
-        publishedAt: new Date(item.PUBDATE?.[0] ?? Date.now()).toISOString(),
-      }));
-    }
-
-    return items.map((item) => ({
-      source,
-      url: item.link ?? '',
-      title: item.title ?? '',
-      summary: item.contentSnippet ?? item.content ?? null,
-      publishedAt: new Date(item.pubDate ?? item.isoDate ?? Date.now()).toISOString(),
-    }));
-  } catch {
-    // Fallback: parse with xml2js directly for minimal/non-standard RSS
-    const parsed = await parseStringPromise(xml, { strict: false });
-    const channel = (parsed as any).RSS?.CHANNEL?.[0];
-    if (!channel) return [];
-    const items = channel.ITEM || [];
-    const itemArray = Array.isArray(items) ? items : items ? [items] : [];
-    return itemArray.map((item: any) => ({
-      source,
-      url: (item.LINK?.[0] ?? '') as string,
-      title: (item.TITLE?.[0] ?? '') as string,
-      summary: (item.DESCRIPTION?.[0] ?? null) as string | null,
-      publishedAt: new Date(item.PUBDATE?.[0] ?? Date.now()).toISOString(),
-    }));
-  }
+  const parser = new Parser();
+  const feed = await parser.parseString(xml);
+  return (feed.items ?? []).map((item) => ({
+    source,
+    url: item.link ?? '',
+    title: item.title ?? '',
+    summary: item.contentSnippet ?? item.content ?? null,
+    publishedAt: new Date(item.pubDate ?? item.isoDate ?? Date.now()).toISOString(),
+  }));
 }
 
 function stripHtml(input: string): string {
