@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Type } from '@google/genai';
 import { buildPredictionDraft } from '../lib/predict';
 import { getGemini } from '../lib/geminiClient';
 
@@ -33,5 +34,21 @@ describe('buildPredictionDraft', () => {
       confidence: 0.4,
       reasoning: '과거 3건 평균 -3% 하락, 이번 뉴스도 유사한 부정적 맥락',
     });
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-2.5-flash',
+        contents: expect.stringContaining('축산업'),
+        config: expect.objectContaining({
+          responseMimeType: 'application/json',
+          responseSchema: expect.objectContaining({
+            type: Type.OBJECT,
+            required: ['direction', 'rangeLow', 'rangeHigh', 'confidence', 'reasoning'],
+            properties: expect.objectContaining({
+              direction: expect.objectContaining({ type: Type.STRING }),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 });

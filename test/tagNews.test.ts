@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Type } from '@google/genai';
 import { tagNewsItem } from '../lib/tagNews';
 import { getGemini } from '../lib/geminiClient';
 
@@ -28,6 +29,21 @@ describe('tagNewsItem', () => {
     expect(result).toEqual([
       { themeName: '반도체', sentiment: 'positive', confidence: 0.8, reasoning: 'D램 수요 증가는 반도체 업종에 호재' },
     ]);
-    expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.5-flash-lite' }));
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-2.5-flash-lite',
+        contents: expect.stringContaining('SK하이닉스, D램 수요 증가 전망'),
+        config: expect.objectContaining({
+          responseMimeType: 'application/json',
+          responseSchema: expect.objectContaining({
+            type: Type.OBJECT,
+            required: ['tags'],
+            properties: expect.objectContaining({
+              tags: expect.objectContaining({ type: Type.ARRAY }),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 });

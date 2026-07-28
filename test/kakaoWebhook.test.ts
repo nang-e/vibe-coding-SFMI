@@ -71,6 +71,13 @@ describe('kakao webhook handler', () => {
 
     await Promise.all(capturedBackgroundPromises);
 
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-2.5-flash',
+        contents: expect.stringContaining('실시간 흐름이랑 예상하락종목 알려줘'),
+      }),
+    );
+
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe('https://bot-api.kakao.com/callback/abc');
