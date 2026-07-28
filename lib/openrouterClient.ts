@@ -10,9 +10,13 @@ export class OpenRouterError extends Error {
   }
 }
 
-// Picked from the live :free model list (openrouter.ai/api/v1/models) —
-// verified working via a direct test call before wiring this in.
-export const MODEL_NAME = 'openai/gpt-oss-20b:free';
+// Picked from the live :free model list (openrouter.ai/api/v1/models).
+// openai/gpt-oss-20b:free was tried first but is a reasoning model that
+// burns 100+ reasoning tokens per call (10-15s each) — with up to 20
+// sequential tag calls plus prediction calls, that blew through even a
+// 300s function budget. This one answers directly with 0 reasoning
+// tokens (~3s per call), verified via direct test calls before switching.
+export const MODEL_NAME = 'google/gemma-4-26b-a4b-it:free';
 
 async function chat(prompt: string, jsonMode: boolean): Promise<string> {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
