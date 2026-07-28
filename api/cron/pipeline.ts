@@ -16,10 +16,11 @@ import { run as generatePredictions } from '../../lib/jobs/generatePredictions';
 // maxDuration — without raising it past the platform default (10s), the
 // background chain (price fetches + up to 20 sequential Gemini tag calls +
 // prediction generation) gets killed mid-run with no error logged, which is
-// why scheduled runs silently produced no Kakao message. 60s is the Hobby
-// plan's configurable ceiling.
+// why scheduled runs silently produced no Kakao message. 60s wasn't enough
+// either (measured a real "Task timed out after 60 seconds"), so this is
+// set to 300s.
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
