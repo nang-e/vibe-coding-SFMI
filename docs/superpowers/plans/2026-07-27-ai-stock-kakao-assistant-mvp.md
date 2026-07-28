@@ -1834,6 +1834,8 @@ git commit -m "feat: add daily prediction feedback checker"
 
 Using the Vercel MCP tools (or the dashboard), set for the production environment: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `CRON_SECRET` (generate a long random value for this one, e.g. `openssl rand -hex 32`). None of these are committed to git — confirm `.env` stays untracked (`git status` should not show it).
 
+> **Superseded by Task 10:** `ANTHROPIC_API_KEY` above is no longer used by the code — set `GEMINI_API_KEY` instead (see Task 10).
+
 - [ ] **Step 3: Deploy to Vercel**
 
 Use the Vercel MCP `deploy_to_vercel` tool (or `git push` if the Vercel project is linked to the GitHub repo for auto-deploy — recommended, since the repo already exists at `https://github.com/nang-e/vibe-coding-SFMI`). Confirm the deployment is `READY` and note the production URL.
