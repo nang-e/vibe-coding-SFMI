@@ -28,7 +28,8 @@ async function buildAnswer(utterance: string): Promise<string> {
     contents: `사용자가 카카오톡으로 이렇게 물어봤어: "${utterance}"\n\n아래는 시스템이 가진 최신 데이터야:\n${context}\n\n비개발자도 이해하기 쉬운 문장으로, 카카오톡 메시지로 보낼 답변을 작성해줘. 확신을 과장하지 말고, 데이터가 부족하면 부족하다고 말해줘.`,
   });
 
-  const answer = response.text ?? '지금은 답변을 만들지 못했어요, 잠시 후 다시 물어봐 주세요.';
+  if (!response.text) throw new Error('Gemini did not return an answer');
+  const answer = response.text;
 
   await supabase.from('kakao_conversations').insert({ question: utterance, answer });
   return answer;

@@ -132,4 +132,47 @@ describe('kakao webhook handler', () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it('treats an empty Gemini response.text as a failure rather than logging/sending it as a real answer', async () => {
+    mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
+    mockGenerateContent.mockImplementationOnce(async () => ({ text: '' }));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const insertMock = vi.fn();
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'kakao_conversations') return { insert: insertMock };
+      return chainable({ data: [], error: null });
+    });
+
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = {
+      method: 'POST',
+      body: {
+        userRequest: {
+          utterance: '오늘 뭐 사',
+          callbackUrl: 'https://bot-api.kakao.com/callback/ghi',
+        },
+      },
+    } as any;
+    const json = vi.fn();
+    const res = { status: vi.fn(() => ({ json })) } as any;
+
+    await handler(req, res);
+
+    await Promise.all(capturedBackgroundPromises.map((p) => p.catch(() => {})));
+
+    // No answer should ever be recorded to kakao_conversations for an empty Gemini response.
+    expect(insertMock).not.toHaveBeenCalled();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    const parsedBody = JSON.parse(options.body);
+    expect(parsedBody.template.outputs[0].simpleText.text).toContain(
+      '죄송해요, 지금 답변을 만드는 중 문제가 생겼어요. 잠시 후 다시 물어봐 주세요.',
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
 });
