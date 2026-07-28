@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { getSupabase } from '../../lib/supabaseClient';
-import { getClaude, REASONING_MODEL } from '../../lib/claudeClient';
+import { getGemini, REASONING_MODEL } from '../../lib/geminiClient';
 import { simpleTextResponse, callbackAckResponse } from '../../lib/kakaoResponse';
 
 async function buildAnswer(utterance: string): Promise<string> {
@@ -22,20 +22,13 @@ async function buildAnswer(utterance: string): Promise<string> {
     ...(tags ?? []).map((t) => `- [${(t as any).themes?.name}] ${(t as any).news_items?.title} (${t.sentiment})`),
   ].join('\n');
 
-  const claude = getClaude();
-  const response = await claude.messages.create({
+  const gemini = getGemini();
+  const response = await gemini.models.generateContent({
     model: REASONING_MODEL,
-    max_tokens: 512,
-    messages: [
-      {
-        role: 'user',
-        content: `사용자가 카카오톡으로 이렇게 물어봤어: "${utterance}"\n\n아래는 시스템이 가진 최신 데이터야:\n${context}\n\n비개발자도 이해하기 쉬운 문장으로, 카카오톡 메시지로 보낼 답변을 작성해줘. 확신을 과장하지 말고, 데이터가 부족하면 부족하다고 말해줘.`,
-      },
-    ],
+    contents: `사용자가 카카오톡으로 이렇게 물어봤어: "${utterance}"\n\n아래는 시스템이 가진 최신 데이터야:\n${context}\n\n비개발자도 이해하기 쉬운 문장으로, 카카오톡 메시지로 보낼 답변을 작성해줘. 확신을 과장하지 말고, 데이터가 부족하면 부족하다고 말해줘.`,
   });
 
-  const textBlock = response.content.find((c): c is any => c.type === 'text');
-  const answer = textBlock?.text ?? '지금은 답변을 만들지 못했어요, 잠시 후 다시 물어봐 주세요.';
+  const answer = response.text ?? '지금은 답변을 만들지 못했어요, 잠시 후 다시 물어봐 주세요.';
 
   await supabase.from('kakao_conversations').insert({ question: utterance, answer });
   return answer;

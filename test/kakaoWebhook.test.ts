@@ -3,10 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 const mockFrom = vi.fn();
 vi.mock('../lib/supabaseClient', () => ({ getSupabase: () => ({ from: mockFrom }) }));
 
-const mockCreate = vi.fn(async () => ({ content: [{ type: 'text', text: '지금 반도체 테마가 좋아요' }] }));
-vi.mock('../lib/claudeClient', () => ({
-  getClaude: () => ({ messages: { create: mockCreate } }),
-  REASONING_MODEL: 'claude-sonnet-5',
+const mockGenerateContent = vi.fn(async () => ({ text: '지금 반도체 테마가 좋아요' }));
+vi.mock('../lib/geminiClient', () => ({
+  getGemini: () => ({ models: { generateContent: mockGenerateContent } }),
+  REASONING_MODEL: 'gemini-2.5-flash',
 }));
 
 const capturedBackgroundPromises: Promise<any>[] = [];
@@ -59,14 +59,14 @@ describe('kakao webhook handler', () => {
 
     await handler(req, res);
 
-    // The handler must respond with the ack in the same tick, without waiting for Claude/Supabase.
+    // The handler must respond with the ack in the same tick, without waiting for Gemini/Supabase.
     expect(res.status).toHaveBeenCalledWith(200);
     expect(json).toHaveBeenCalledWith({
       version: '2.0',
       useCallback: true,
       data: { text: '분석 중이에요, 잠시만 기다려주세요' },
     });
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockGenerateContent).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
 
     await Promise.all(capturedBackgroundPromises);
@@ -87,8 +87,8 @@ describe('kakao webhook handler', () => {
 
   it('still posts a fallback error message to callbackUrl when the background work throws', async () => {
     mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
-    mockCreate.mockImplementationOnce(async () => {
-      throw new Error('claude unavailable');
+    mockGenerateContent.mockImplementationOnce(async () => {
+      throw new Error('gemini unavailable');
     });
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
