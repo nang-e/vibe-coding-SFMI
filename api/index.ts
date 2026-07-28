@@ -26,7 +26,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .map((p) => {
       const arrow = p.direction === 'down' ? '📉 하락' : '📈 상승';
       const themeName = (p as any).themes?.name ?? '알 수 없음';
-      const time = new Date(p.created_at).toLocaleString('ko-KR');
+      // Server runs in UTC — toLocaleString('ko-KR') alone doesn't convert
+      // the timezone, only the number formatting, so it must be pinned to
+      // Asia/Seoul explicitly to show actual Korean local time.
+      const time = new Date(p.created_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       return `<li class="item">
         <div class="item-head">
           <span class="theme">${escapeHtml(themeName)}</span>
