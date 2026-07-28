@@ -6,7 +6,7 @@ vi.mock('../lib/supabaseClient', () => ({ getSupabase: () => ({ from: mockFrom }
 const mockTagNewsItem = vi.fn();
 vi.mock('../lib/tagNews', () => ({ tagNewsItem: (...args: any[]) => mockTagNewsItem(...args) }));
 
-import { ApiError } from '@google/genai';
+import { OpenRouterError } from '../lib/openrouterClient';
 import { run } from '../api/cron/tag-news';
 
 const THEMES = [{ id: 'th1', name: '반도체' }];
@@ -64,7 +64,7 @@ describe('tag-news run()', () => {
     mockTagNewsItem
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new ApiError({ message: 'rate limited', status: 429 }));
+      .mockRejectedValueOnce(new OpenRouterError('rate limited', 429));
 
     const result = await run();
 

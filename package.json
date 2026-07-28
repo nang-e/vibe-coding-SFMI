@@ -14,7 +14,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@google/genai": "^2.13.0",
     "@supabase/supabase-js": "^2.110.8",
     "@vercel/functions": "^3.7.6",
     "dotenv": "^17.4.2",

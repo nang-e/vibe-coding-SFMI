@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { getSupabase } from '../../lib/supabaseClient';
-import { getGemini, REASONING_MODEL } from '../../lib/geminiClient';
+import { chatText } from '../../lib/openrouterClient';
 import { simpleTextResponse, callbackAckResponse } from '../../lib/kakaoResponse';
 
 async function buildAnswer(utterance: string): Promise<string> {
@@ -22,14 +22,11 @@ async function buildAnswer(utterance: string): Promise<string> {
     ...(tags ?? []).map((t) => `- [${(t as any).themes?.name}] ${(t as any).news_items?.title} (${t.sentiment})`),
   ].join('\n');
 
-  const gemini = getGemini();
-  const response = await gemini.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `사용자가 카카오톡으로 이렇게 물어봤어: "${utterance}"\n\n아래는 시스템이 가진 최신 데이터야:\n${context}\n\n비개발자도 이해하기 쉬운 문장으로, 카카오톡 메시지로 보낼 답변을 작성해줘. 확신을 과장하지 말고, 데이터가 부족하면 부족하다고 말해줘.`,
-  });
+  const answer = await chatText(
+    `사용자가 카카오톡으로 이렇게 물어봤어: "${utterance}"\n\n아래는 시스템이 가진 최신 데이터야:\n${context}\n\n비개발자도 이해하기 쉬운 문장으로, 카카오톡 메시지로 보낼 답변을 작성해줘. 확신을 과장하지 말고, 데이터가 부족하면 부족하다고 말해줘.`,
+  );
 
-  if (!response.text) throw new Error('Gemini did not return an answer');
-  const answer = response.text;
+  if (!answer) throw new Error('OpenRouter did not return an answer');
 
   await supabase.from('kakao_conversations').insert({ question: utterance, answer });
   return answer;

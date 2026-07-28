@@ -3,10 +3,9 @@ import { describe, it, expect, vi } from 'vitest';
 const mockFrom = vi.fn();
 vi.mock('../lib/supabaseClient', () => ({ getSupabase: () => ({ from: mockFrom }) }));
 
-const mockGenerateContent = vi.fn(async () => ({ text: '지금 반도체 테마가 좋아요' }));
-vi.mock('../lib/geminiClient', () => ({
-  getGemini: () => ({ models: { generateContent: mockGenerateContent } }),
-  REASONING_MODEL: 'gemini-flash-latest',
+const mockChatText = vi.fn(async () => '지금 반도체 테마가 좋아요');
+vi.mock('../lib/openrouterClient', () => ({
+  chatText: (...args: any[]) => mockChatText(...args),
 }));
 
 const capturedBackgroundPromises: Promise<any>[] = [];
@@ -66,17 +65,12 @@ describe('kakao webhook handler', () => {
       useCallback: true,
       data: { text: '분석 중이에요, 잠시만 기다려주세요' },
     });
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockChatText).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
 
     await Promise.all(capturedBackgroundPromises);
 
-    expect(mockGenerateContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: 'gemini-flash-latest',
-        contents: expect.stringContaining('실시간 흐름이랑 예상하락종목 알려줘'),
-      }),
-    );
+    expect(mockChatText).toHaveBeenCalledWith(expect.stringContaining('실시간 흐름이랑 예상하락종목 알려줘'));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
@@ -94,8 +88,8 @@ describe('kakao webhook handler', () => {
 
   it('still posts a fallback error message to callbackUrl when the background work throws', async () => {
     mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
-    mockGenerateContent.mockImplementationOnce(async () => {
-      throw new Error('gemini unavailable');
+    mockChatText.mockImplementationOnce(async () => {
+      throw new Error('openrouter unavailable');
     });
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -133,9 +127,9 @@ describe('kakao webhook handler', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('treats an empty Gemini response.text as a failure rather than logging/sending it as a real answer', async () => {
+  it('treats an empty LLM response as a failure rather than logging/sending it as a real answer', async () => {
     mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
-    mockGenerateContent.mockImplementationOnce(async () => ({ text: '' }));
+    mockChatText.mockImplementationOnce(async () => '');
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const insertMock = vi.fn();

@@ -1,9 +1,9 @@
-import { ApiError } from '@google/genai';
 import { getSupabase } from '../supabaseClient';
 import { fetchThemeReactionHistory, computeThemeReactionStats } from '../stats';
 import { buildPredictionDraft, type PredictionDraft } from '../predict';
 import { THEME_OVERSEAS_PEERS, fetchOverseasSignals } from '../overseasSignal';
 import { sendKakaoMemo } from '../kakaoMemo';
+import { OpenRouterError } from '../openrouterClient';
 
 const CHECK_AFTER_DAYS = 3;
 // Don't re-predict the same theme more than once per window, whether the
@@ -14,7 +14,7 @@ const COOLDOWN_HOURS = 1;
 const PUSH_THRESHOLD_PCT = 1;
 
 function isRateLimitError(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 429;
+  return err instanceof OpenRouterError && err.status === 429;
 }
 
 async function hasRecentPrediction(

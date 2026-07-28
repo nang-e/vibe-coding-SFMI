@@ -1,15 +1,15 @@
-import { ApiError } from '@google/genai';
 import { getSupabase } from '../supabaseClient';
 import { tagNewsItem } from '../tagNews';
+import { OpenRouterError } from '../openrouterClient';
 import type { Theme } from '../types';
 
-// Gemini free tier caps (TAGGING_MODEL, lite tier): ~15 requests/minute, ~1000 requests/day.
+// OpenRouter free-tier models: 20 requests/minute, 50 requests/day account-wide.
 // Cap each run's batch well under the per-minute limit so a single invocation can't
 // blow through it, leaving any remaining backlog for the next scheduled run.
 const MAX_PER_RUN = 20;
 
 function isRateLimitError(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 429;
+  return err instanceof OpenRouterError && err.status === 429;
 }
 
 export async function run() {

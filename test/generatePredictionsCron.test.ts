@@ -27,7 +27,7 @@ vi.mock('../lib/overseasSignal', () => ({
 const mockSendKakaoMemo = vi.fn(async () => {});
 vi.mock('../lib/kakaoMemo', () => ({ sendKakaoMemo: (...args: any[]) => mockSendKakaoMemo(...args) }));
 
-import { ApiError } from '@google/genai';
+import { OpenRouterError } from '../lib/openrouterClient';
 import { run } from '../api/cron/generate-predictions';
 
 function tagRow(themeId: string, themeName: string, sentiment: string, title: string) {
@@ -77,7 +77,7 @@ describe('generate-predictions run()', () => {
 
     mockBuildPredictionDraft
       .mockResolvedValueOnce({ direction: 'up', rangeLow: 1, rangeHigh: 2, confidence: 0.5, reasoning: 'ok' })
-      .mockRejectedValueOnce(new ApiError({ message: 'rate limited', status: 429 }));
+      .mockRejectedValueOnce(new OpenRouterError('rate limited', 429));
 
     const result = await run();
 
