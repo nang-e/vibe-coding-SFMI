@@ -1,8 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { ApiError } from '@google/genai';
 import { getSupabase } from '../../lib/supabaseClient';
 import { tagNewsItem } from '../../lib/tagNews';
 import { requireCronSecret } from '../../lib/auth';
 import type { Theme } from '../../lib/types';
+
+// Gemini free tier caps (gemini-2.5-flash-lite): 15 requests/minute, 1000 requests/day.
+// Cap each run's batch well under the per-minute limit so a single invocation can't
+// blow through it, leaving any remaining backlog for the next scheduled run.
+const MAX_PER_RUN = 20;
+
+function isRateLimitError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429;
+}
 
 export async function run() {
   const supabase = getSupabase();
@@ -20,10 +30,11 @@ export async function run() {
     .limit(200);
   if (newsError) throw new Error(newsError.message);
 
-  const untagged = (allNews ?? []).filter((n) => !taggedIds.has(n.id));
+  const untagged = (allNews ?? []).filter((n) => !taggedIds.has(n.id)).slice(0, MAX_PER_RUN);
   const results = { tagged: 0, noThemeFound: 0, failures: [] as string[] };
 
-  for (const news of untagged) {
+  for (let i = 0; i < untagged.length; i++) {
+    const news = untagged[i];
     try {
       const tags = await tagNewsItem({ title: news.title, summary: news.summary }, themes as Theme[]);
       if (tags.length === 0) {
@@ -46,6 +57,10 @@ export async function run() {
       }
       results.tagged++;
     } catch (err) {
+      if (isRateLimitError(err)) {
+        results.failures.push(`rate limited, stopping early after ${i} items`);
+        break;
+      }
       results.failures.push(`${news.id}: ${(err as Error).message}`);
     }
   }
