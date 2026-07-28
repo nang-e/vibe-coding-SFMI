@@ -31,7 +31,13 @@ import { OpenRouterError } from '../lib/openrouterClient';
 import { run } from '../api/cron/generate-predictions';
 
 function tagRow(themeId: string, themeName: string, sentiment: string, title: string) {
-  return { theme_id: themeId, sentiment, reasoning: 'r', themes: { name: themeName }, news_items: { title } };
+  return {
+    theme_id: themeId,
+    sentiment,
+    reasoning: 'r',
+    themes: { name: themeName },
+    news_items: { title, url: `https://news.example.com/${themeId}` },
+  };
 }
 
 function chainable(result: any) {
@@ -133,6 +139,38 @@ describe('generate-predictions run()', () => {
     expect(result.pushed).toBe(1);
     expect(mockSendKakaoMemo).toHaveBeenCalledTimes(1);
     expect(mockSendKakaoMemo).toHaveBeenCalledWith(expect.stringContaining('반도체 근거'));
+  });
+
+  it('batches multiple push-worthy predictions into one numbered report with reasoning and a link per item', async () => {
+    const tags = [
+      tagRow('t1', '반도체', 'negative', '뉴스1'),
+      tagRow('t2', '바이오', 'positive', '뉴스2'),
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'themes') return chainable({ data: [], error: null });
+      if (table === 'news_tags') return chainable({ data: tags, error: null });
+      if (table === 'predictions') {
+        return { select: () => chainable({ data: [], error: null }), insert: vi.fn(async () => ({ error: null })) };
+      }
+      return chainable({ data: [], error: null });
+    });
+
+    mockBuildPredictionDraft
+      .mockResolvedValueOnce({ direction: 'down', rangeLow: -3, rangeHigh: -1, confidence: 0.4, reasoning: '반도체 근거' })
+      .mockResolvedValueOnce({ direction: 'up', rangeLow: 2, rangeHigh: 5, confidence: 0.5, reasoning: '바이오 근거' });
+
+    const result = await run();
+
+    expect(result.pushed).toBe(2);
+    expect(mockSendKakaoMemo).toHaveBeenCalledTimes(1);
+    const text = mockSendKakaoMemo.mock.calls[0][0];
+    expect(text).toContain('1)');
+    expect(text).toContain('2)');
+    expect(text).toContain('근거: 반도체 근거');
+    expect(text).toContain('근거: 바이오 근거');
+    expect(text).toContain('링크: https://news.example.com/t1');
+    expect(text).toContain('링크: https://news.example.com/t2');
   });
 
   it('generates an overseas-signal prediction for a theme with no fresh domestic news, citing the peers', async () => {

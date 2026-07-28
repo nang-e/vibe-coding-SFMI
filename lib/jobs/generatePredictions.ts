@@ -65,9 +65,23 @@ function formatPct(n: number): string {
   return n >= 0 ? `+${n}` : `△${Math.abs(n)}`;
 }
 
-async function pushPredictionAlert(themeName: string, draft: PredictionDraft): Promise<void> {
-  const arrow = draft.direction === 'down' ? '📉 하락' : '📈 상승';
-  const text = `${HEADER}\n${themeName} 테마 ${arrow} 예상 ${formatPct(draft.rangeLow)}~${formatPct(draft.rangeHigh)}% (약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n\n${draft.reasoning}\n\n${DISCLAIMER}`;
+interface PushCandidate {
+  themeName: string;
+  draft: PredictionDraft;
+  link: string | null;
+}
+
+// User asked for a numbered report (theme + direction/%, 근거, 링크 per item)
+// instead of one Kakao message per theme — all push-worthy predictions from
+// a single run are batched into one combined message.
+function formatPredictionItem(index: number, item: PushCandidate): string {
+  const arrow = item.draft.direction === 'down' ? '📉 하락' : '📈 상승';
+  return `${index}) ${item.themeName} ${arrow} 예상 ${formatPct(item.draft.rangeLow)}~${formatPct(item.draft.rangeHigh)}% (약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n근거: ${item.draft.reasoning}\n링크: ${item.link ?? '(링크 없음)'}`;
+}
+
+async function pushPredictionReport(items: PushCandidate[]): Promise<void> {
+  const body = items.map((item, i) => formatPredictionItem(i + 1, item)).join('\n\n');
+  const text = `${HEADER}\n이번 시간 예측 리포트\n\n${body}\n\n${DISCLAIMER}`;
   await sendKakaoMemo(text);
 }
 
@@ -95,6 +109,7 @@ async function pushNoNewsHeartbeat(supabase: ReturnType<typeof getSupabase>): Pr
 export async function run() {
   const supabase = getSupabase();
   const results = { created: 0, pushed: 0, heartbeat: false, failures: [] as string[] };
+  const pushCandidates: PushCandidate[] = [];
 
   const { data: themes, error: themesError } = await supabase.from('themes').select('*');
   if (themesError) throw new Error(themesError.message);
@@ -104,17 +119,19 @@ export async function run() {
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data: recentTags, error } = await supabase
     .from('news_tags')
-    .select('theme_id, sentiment, reasoning, themes(name), news_items(title)')
+    .select('theme_id, sentiment, reasoning, themes(name), news_items(title, url)')
     .neq('sentiment', 'neutral')
     .gte('created_at', since);
   if (error) throw new Error(error.message);
 
-  const byTheme = new Map<string, { name: string; sentiment: string; summaries: string[] }>();
+  const byTheme = new Map<string, { name: string; sentiment: string; summaries: string[]; link: string | null }>();
   for (const tag of recentTags ?? []) {
     const themeName = (tag as any).themes?.name ?? 'unknown';
     const key = `${tag.theme_id}:${tag.sentiment}`;
-    if (!byTheme.has(key)) byTheme.set(key, { name: themeName, sentiment: tag.sentiment, summaries: [] });
-    byTheme.get(key)!.summaries.push((tag as any).news_items?.title ?? tag.reasoning);
+    if (!byTheme.has(key)) byTheme.set(key, { name: themeName, sentiment: tag.sentiment, summaries: [], link: null });
+    const group = byTheme.get(key)!;
+    group.summaries.push((tag as any).news_items?.title ?? tag.reasoning);
+    if (!group.link && (tag as any).news_items?.url) group.link = (tag as any).news_items.url;
   }
 
   let processed = 0;
@@ -130,8 +147,7 @@ export async function run() {
       results.created++;
 
       if (exceedsPushThreshold(draft)) {
-        await pushPredictionAlert(group.name, draft);
-        results.pushed++;
+        pushCandidates.push({ themeName: group.name, draft, link: group.link });
       }
     } catch (err) {
       if (isRateLimitError(err)) {
@@ -168,15 +184,18 @@ export async function run() {
       results.created++;
 
       if (exceedsPushThreshold(draft)) {
-        await pushPredictionAlert(themeName, draft);
-        results.pushed++;
+        const topMover = movers.reduce((a, b) => (Math.abs(b.changePct) > Math.abs(a.changePct) ? b : a));
+        pushCandidates.push({ themeName, draft, link: `https://finance.yahoo.com/quote/${topMover.ticker}` });
       }
     } catch (err) {
       results.failures.push(`overseas:${themeName}: ${(err as Error).message}`);
     }
   }
 
-  if (results.pushed === 0) {
+  if (pushCandidates.length > 0) {
+    await pushPredictionReport(pushCandidates);
+    results.pushed = pushCandidates.length;
+  } else {
     try {
       await pushNoNewsHeartbeat(supabase);
       results.heartbeat = true;
