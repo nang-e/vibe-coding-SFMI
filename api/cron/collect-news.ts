@@ -3,7 +3,10 @@ import { getSupabase } from '../../lib/supabaseClient';
 import { fetchNaverNews, fetchRssFeed } from '../../lib/newsClient';
 import { requireCronSecret } from '../../lib/auth';
 
-const NAVER_QUERIES = ['반도체', '2차전지', '바이오', '자동차 산업', '조선업', '축산업', '금리'];
+const NAVER_QUERIES = [
+  '반도체', '2차전지', '바이오', '자동차 산업', '조선업', '축산업', '금리',
+  '삼성전자', 'SK하이닉스', '엔비디아', 'TSMC', 'ASML', '반도체 수출', '반도체 업황',
+];
 const RSS_FEEDS = [
   { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', source: 'bbc' },
   { url: 'https://www.marketwatch.com/rss/topstories', source: 'marketwatch' },
