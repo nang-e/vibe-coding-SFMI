@@ -11,6 +11,17 @@ import { run as generatePredictions } from './generate-predictions';
 // Ack immediately and let the work continue via waitUntil, same pattern as the
 // Kakao webhook — the caller only needs the run to have been triggered, not to
 // wait for it to finish.
+//
+// waitUntil only keeps the invocation alive up to the function's own
+// maxDuration — without raising it past the platform default (10s), the
+// background chain (price fetches + up to 20 sequential Gemini tag calls +
+// prediction generation) gets killed mid-run with no error logged, which is
+// why scheduled runs silently produced no Kakao message. 60s is the Hobby
+// plan's configurable ceiling.
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requireCronSecret(req)) return res.status(401).json({ error: 'unauthorized' });
 
