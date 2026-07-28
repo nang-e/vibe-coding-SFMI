@@ -56,9 +56,20 @@ function exceedsPushThreshold(draft: PredictionDraft): boolean {
   return Math.abs(draft.rangeLow) >= PUSH_THRESHOLD_PCT || Math.abs(draft.rangeHigh) >= PUSH_THRESHOLD_PCT;
 }
 
+const HEADER = '📊 [AI 주식비서]';
+// Kakao's "나에게 보내기" text template has no bold/rich-text support — the
+// warning emoji is the closest we can get to visually emphasizing this line.
+const DISCLAIMER = '⚠️ 투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.';
+
+// User asked for readability: '-' reads poorly next to '%', so negative
+// values use '△' instead while positives keep their '+'.
+function formatPct(n: number): string {
+  return n >= 0 ? `+${n}` : `△${Math.abs(n)}`;
+}
+
 async function pushPredictionAlert(themeName: string, draft: PredictionDraft): Promise<void> {
-  const arrow = draft.direction === 'down' ? '하락' : '상승';
-  const text = `[AI 주식비서] ${themeName} 테마 ${arrow} 예상 ${draft.rangeLow}~${draft.rangeHigh}%\n\n${draft.reasoning}\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.`;
+  const arrow = draft.direction === 'down' ? '📉 하락' : '📈 상승';
+  const text = `${HEADER} ${themeName} 테마 ${arrow} 예상 ${formatPct(draft.rangeLow)}~${formatPct(draft.rangeHigh)}% (약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n\n${draft.reasoning}\n\n${DISCLAIMER}`;
   await sendKakaoMemo(text);
 }
 
@@ -72,14 +83,14 @@ async function pushNoNewsHeartbeat(supabase: ReturnType<typeof getSupabase>): Pr
     .order('created_at', { ascending: false })
     .limit(1);
   if (error || !latest || latest.length === 0) {
-    await sendKakaoMemo('[AI 주식비서] 새로운 소식 없음 — 아직 쌓인 예측 기록도 없어요.\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.');
+    await sendKakaoMemo(`${HEADER} 새로운 소식 없음 — 아직 쌓인 예측 기록도 없어요.\n\n${DISCLAIMER}`);
     return;
   }
 
   const p = latest[0] as any;
-  const arrow = p.direction === 'down' ? '하락' : '상승';
+  const arrow = p.direction === 'down' ? '📉 하락' : '📈 상승';
   const themeName = p.themes?.name ?? '알 수 없음';
-  const text = `[AI 주식비서] 새로운 소식 없음 — 가장 최근 예측을 다시 보여드려요.\n\n${themeName} 테마 ${arrow} 예상 ${p.range_low}~${p.range_high}% (${new Date(p.created_at).toLocaleString('ko-KR')} 기준)\n${p.reasoning}\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.`;
+  const text = `${HEADER} 새로운 소식 없음 — 가장 최근 예측을 다시 보여드려요.\n\n${themeName} 테마 ${arrow} 예상 ${formatPct(p.range_low)}~${formatPct(p.range_high)}% (${new Date(p.created_at).toLocaleString('ko-KR')} 기준, 약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n${p.reasoning}\n\n${DISCLAIMER}`;
   await sendKakaoMemo(text);
 }
 
