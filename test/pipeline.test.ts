@@ -5,6 +5,11 @@ vi.mock('../api/cron/collect-news', () => ({ run: vi.fn(async () => ({ inserted:
 vi.mock('../api/cron/tag-news', () => ({ run: vi.fn(async () => ({ tagged: 1 })) }));
 vi.mock('../api/cron/generate-predictions', () => ({ run: vi.fn(async () => ({ created: 1 })) }));
 
+const capturedBackgroundPromises: Promise<any>[] = [];
+vi.mock('@vercel/functions', () => ({
+  waitUntil: (p: Promise<any>) => { capturedBackgroundPromises.push(p); },
+}));
+
 import handler from '../api/cron/pipeline';
 import { run as collectPrices } from '../api/cron/collect-prices';
 import { run as collectNews } from '../api/cron/collect-news';
@@ -14,9 +19,10 @@ import { run as generatePredictions } from '../api/cron/generate-predictions';
 describe('pipeline handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedBackgroundPromises.length = 0;
   });
 
-  it('runs all four steps in order and returns their combined results', async () => {
+  it('acknowledges immediately, then runs all four steps in order via waitUntil', async () => {
     process.env.CRON_SECRET = 'secret';
     const req = { headers: { 'x-cron-secret': 'secret' } } as any;
     const json = vi.fn();
@@ -24,17 +30,15 @@ describe('pipeline handler', () => {
 
     await handler(req, res);
 
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(json).toHaveBeenCalledWith({ status: 'started' });
+
+    await Promise.all(capturedBackgroundPromises);
+
     expect(collectPrices).toHaveBeenCalled();
     expect(collectNews).toHaveBeenCalled();
     expect(tagNews).toHaveBeenCalled();
     expect(generatePredictions).toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith({
-      prices: { updatedDaily: 1 },
-      news: { inserted: 2 },
-      tagging: { tagged: 1 },
-      predictions: { created: 1 },
-    });
   });
 
   it('returns 401 and does not run any steps when the cron secret is missing or wrong', async () => {
