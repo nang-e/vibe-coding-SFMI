@@ -1,10 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { ApiError } from '@google/genai';
 import { getSupabase } from '../../lib/supabaseClient';
 import { fetchThemeReactionHistory, computeThemeReactionStats } from '../../lib/stats';
 import { buildPredictionDraft } from '../../lib/predict';
 import { requireCronSecret } from '../../lib/auth';
 
 const CHECK_AFTER_DAYS = 3;
+
+function isRateLimitError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429;
+}
 
 export async function run() {
   const supabase = getSupabase();
@@ -25,6 +30,7 @@ export async function run() {
   }
 
   const results = { created: 0, failures: [] as string[] };
+  let processed = 0;
   for (const [key, group] of byTheme) {
     const [themeId] = key.split(':');
     try {
@@ -43,7 +49,13 @@ export async function run() {
       if (insertError) throw new Error(`prediction insert failed: ${insertError.message}`);
       results.created++;
     } catch (err) {
+      if (isRateLimitError(err)) {
+        results.failures.push(`rate limited, stopping early after ${processed} items`);
+        break;
+      }
       results.failures.push(`${key}: ${(err as Error).message}`);
+    } finally {
+      processed++;
     }
   }
 

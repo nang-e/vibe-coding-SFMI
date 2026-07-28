@@ -1,29 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Type } from '@google/genai';
 import { buildPredictionDraft } from '../lib/predict';
-import { getClaude } from '../lib/claudeClient';
+import { getGemini } from '../lib/geminiClient';
 
-vi.mock('../lib/claudeClient', () => ({
-  getClaude: vi.fn(),
-  REASONING_MODEL: 'claude-sonnet-5',
+vi.mock('../lib/geminiClient', () => ({
+  getGemini: vi.fn(),
+  REASONING_MODEL: 'gemini-2.5-flash',
 }));
 
 describe('buildPredictionDraft', () => {
-  it('asks Claude to synthesize stats + news context into a prediction', async () => {
-    const mockCreate = vi.fn(async () => ({
-      content: [
-        {
-          type: 'tool_use',
-          input: {
-            direction: 'down',
-            rangeLow: -4,
-            rangeHigh: -2,
-            confidence: 0.4,
-            reasoning: '과거 3건 평균 -3% 하락, 이번 뉴스도 유사한 부정적 맥락',
-          },
-        },
-      ],
+  it('asks Gemini to synthesize stats + news context into a prediction', async () => {
+    const mockGenerateContent = vi.fn(async () => ({
+      text: JSON.stringify({
+        direction: 'down',
+        rangeLow: -4,
+        rangeHigh: -2,
+        confidence: 0.4,
+        reasoning: '과거 3건 평균 -3% 하락, 이번 뉴스도 유사한 부정적 맥락',
+      }),
     }));
-    (getClaude as any).mockReturnValue({ messages: { create: mockCreate } });
+    (getGemini as any).mockReturnValue({ models: { generateContent: mockGenerateContent } });
 
     const draft = await buildPredictionDraft({
       themeName: '축산업',
@@ -38,5 +34,21 @@ describe('buildPredictionDraft', () => {
       confidence: 0.4,
       reasoning: '과거 3건 평균 -3% 하락, 이번 뉴스도 유사한 부정적 맥락',
     });
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-2.5-flash',
+        contents: expect.stringContaining('축산업'),
+        config: expect.objectContaining({
+          responseMimeType: 'application/json',
+          responseSchema: expect.objectContaining({
+            type: Type.OBJECT,
+            required: ['direction', 'rangeLow', 'rangeHigh', 'confidence', 'reasoning'],
+            properties: expect.objectContaining({
+              direction: expect.objectContaining({ type: Type.STRING }),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 });

@@ -3,10 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 const mockFrom = vi.fn();
 vi.mock('../lib/supabaseClient', () => ({ getSupabase: () => ({ from: mockFrom }) }));
 
-const mockCreate = vi.fn(async () => ({ content: [{ type: 'text', text: '지금 반도체 테마가 좋아요' }] }));
-vi.mock('../lib/claudeClient', () => ({
-  getClaude: () => ({ messages: { create: mockCreate } }),
-  REASONING_MODEL: 'claude-sonnet-5',
+const mockGenerateContent = vi.fn(async () => ({ text: '지금 반도체 테마가 좋아요' }));
+vi.mock('../lib/geminiClient', () => ({
+  getGemini: () => ({ models: { generateContent: mockGenerateContent } }),
+  REASONING_MODEL: 'gemini-2.5-flash',
 }));
 
 const capturedBackgroundPromises: Promise<any>[] = [];
@@ -59,17 +59,24 @@ describe('kakao webhook handler', () => {
 
     await handler(req, res);
 
-    // The handler must respond with the ack in the same tick, without waiting for Claude/Supabase.
+    // The handler must respond with the ack in the same tick, without waiting for Gemini/Supabase.
     expect(res.status).toHaveBeenCalledWith(200);
     expect(json).toHaveBeenCalledWith({
       version: '2.0',
       useCallback: true,
       data: { text: '분석 중이에요, 잠시만 기다려주세요' },
     });
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockGenerateContent).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
 
     await Promise.all(capturedBackgroundPromises);
+
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-2.5-flash',
+        contents: expect.stringContaining('실시간 흐름이랑 예상하락종목 알려줘'),
+      }),
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
@@ -87,8 +94,8 @@ describe('kakao webhook handler', () => {
 
   it('still posts a fallback error message to callbackUrl when the background work throws', async () => {
     mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
-    mockCreate.mockImplementationOnce(async () => {
-      throw new Error('claude unavailable');
+    mockGenerateContent.mockImplementationOnce(async () => {
+      throw new Error('gemini unavailable');
     });
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -118,6 +125,49 @@ describe('kakao webhook handler', () => {
     expect(url).toBe('https://bot-api.kakao.com/callback/def');
     expect(options.method).toBe('POST');
 
+    const parsedBody = JSON.parse(options.body);
+    expect(parsedBody.template.outputs[0].simpleText.text).toContain(
+      '죄송해요, 지금 답변을 만드는 중 문제가 생겼어요. 잠시 후 다시 물어봐 주세요.',
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('treats an empty Gemini response.text as a failure rather than logging/sending it as a real answer', async () => {
+    mockFrom.mockImplementation(() => chainable({ data: [], error: null }));
+    mockGenerateContent.mockImplementationOnce(async () => ({ text: '' }));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const insertMock = vi.fn();
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'kakao_conversations') return { insert: insertMock };
+      return chainable({ data: [], error: null });
+    });
+
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = {
+      method: 'POST',
+      body: {
+        userRequest: {
+          utterance: '오늘 뭐 사',
+          callbackUrl: 'https://bot-api.kakao.com/callback/ghi',
+        },
+      },
+    } as any;
+    const json = vi.fn();
+    const res = { status: vi.fn(() => ({ json })) } as any;
+
+    await handler(req, res);
+
+    await Promise.all(capturedBackgroundPromises.map((p) => p.catch(() => {})));
+
+    // No answer should ever be recorded to kakao_conversations for an empty Gemini response.
+    expect(insertMock).not.toHaveBeenCalled();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
     const parsedBody = JSON.parse(options.body);
     expect(parsedBody.template.outputs[0].simpleText.text).toContain(
       '죄송해요, 지금 답변을 만드는 중 문제가 생겼어요. 잠시 후 다시 물어봐 주세요.',
