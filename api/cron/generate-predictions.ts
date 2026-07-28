@@ -62,9 +62,30 @@ async function pushPredictionAlert(themeName: string, draft: PredictionDraft): P
   await sendKakaoMemo(text);
 }
 
+// When this run created nothing push-worthy, still send an hourly heartbeat
+// (this endpoint is called roughly once an hour) so the user knows the bot
+// is alive, carrying the most recent prediction on file instead of silence.
+async function pushNoNewsHeartbeat(supabase: ReturnType<typeof getSupabase>): Promise<void> {
+  const { data: latest, error } = await supabase
+    .from('predictions')
+    .select('theme_id, direction, range_low, range_high, reasoning, created_at, themes(name)')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error || !latest || latest.length === 0) {
+    await sendKakaoMemo('[AI 주식비서] 새로운 소식 없음 — 아직 쌓인 예측 기록도 없어요.\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.');
+    return;
+  }
+
+  const p = latest[0] as any;
+  const arrow = p.direction === 'down' ? '하락' : '상승';
+  const themeName = p.themes?.name ?? '알 수 없음';
+  const text = `[AI 주식비서] 새로운 소식 없음 — 가장 최근 예측을 다시 보여드려요.\n\n${themeName} 테마 ${arrow} 예상 ${p.range_low}~${p.range_high}% (${new Date(p.created_at).toLocaleString('ko-KR')} 기준)\n${p.reasoning}\n\n투자 참고용이며 투자 판단과 책임은 본인에게 있습니다.`;
+  await sendKakaoMemo(text);
+}
+
 export async function run() {
   const supabase = getSupabase();
-  const results = { created: 0, pushed: 0, failures: [] as string[] };
+  const results = { created: 0, pushed: 0, heartbeat: false, failures: [] as string[] };
 
   const { data: themes, error: themesError } = await supabase.from('themes').select('*');
   if (themesError) throw new Error(themesError.message);
@@ -143,6 +164,15 @@ export async function run() {
       }
     } catch (err) {
       results.failures.push(`overseas:${themeName}: ${(err as Error).message}`);
+    }
+  }
+
+  if (results.pushed === 0) {
+    try {
+      await pushNoNewsHeartbeat(supabase);
+      results.heartbeat = true;
+    } catch (err) {
+      results.failures.push(`heartbeat: ${(err as Error).message}`);
     }
   }
 

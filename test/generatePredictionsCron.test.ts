@@ -40,6 +40,7 @@ function chainable(result: any) {
     eq: () => chain,
     neq: () => chain,
     gte: () => chain,
+    order: () => chain,
     limit: () => Promise.resolve(result),
     then: (resolve: any) => resolve(result),
   };
@@ -185,5 +186,54 @@ describe('generate-predictions run()', () => {
 
     expect(mockBuildPredictionDraft).not.toHaveBeenCalled();
     expect(result.created).toBe(0);
+  });
+
+  it('sends an hourly heartbeat with the latest prediction when nothing new was pushed', async () => {
+    const latest = {
+      theme_id: 't1',
+      direction: 'up',
+      range_low: 1.2,
+      range_high: 2.5,
+      reasoning: '이전 예측 근거',
+      created_at: '2026-07-27T10:00:00.000Z',
+      themes: { name: '반도체' },
+    };
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'themes') return chainable({ data: [], error: null });
+      if (table === 'news_tags') return chainable({ data: [], error: null });
+      if (table === 'predictions') {
+        return {
+          select: () => chainable({ data: [latest], error: null }),
+          insert: vi.fn(),
+        };
+      }
+      return chainable({ data: [], error: null });
+    });
+
+    const result = await run();
+
+    expect(result.pushed).toBe(0);
+    expect(result.heartbeat).toBe(true);
+    expect(mockSendKakaoMemo).toHaveBeenCalledTimes(1);
+    expect(mockSendKakaoMemo).toHaveBeenCalledWith(expect.stringContaining('새로운 소식 없음'));
+    expect(mockSendKakaoMemo).toHaveBeenCalledWith(expect.stringContaining('반도체'));
+    expect(mockSendKakaoMemo).toHaveBeenCalledWith(expect.stringContaining('이전 예측 근거'));
+  });
+
+  it('sends a fallback heartbeat when there is no prediction history at all', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'themes') return chainable({ data: [], error: null });
+      if (table === 'news_tags') return chainable({ data: [], error: null });
+      if (table === 'predictions') {
+        return { select: () => chainable({ data: [], error: null }), insert: vi.fn() };
+      }
+      return chainable({ data: [], error: null });
+    });
+
+    const result = await run();
+
+    expect(result.heartbeat).toBe(true);
+    expect(mockSendKakaoMemo).toHaveBeenCalledWith(expect.stringContaining('아직 쌓인 예측 기록도 없어요'));
   });
 });
