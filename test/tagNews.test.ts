@@ -5,7 +5,7 @@ import { getGemini } from '../lib/geminiClient';
 
 vi.mock('../lib/geminiClient', () => ({
   getGemini: vi.fn(),
-  TAGGING_MODEL: 'gemini-2.5-flash-lite',
+  TAGGING_MODEL: 'gemini-flash-lite-latest',
 }));
 
 describe('tagNewsItem', () => {
@@ -31,7 +31,7 @@ describe('tagNewsItem', () => {
     ]);
     expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-flash-lite-latest',
         contents: expect.stringContaining('SK하이닉스, D램 수요 증가 전망'),
         config: expect.objectContaining({
           responseMimeType: 'application/json',

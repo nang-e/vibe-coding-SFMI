@@ -6,7 +6,7 @@ vi.mock('../lib/supabaseClient', () => ({ getSupabase: () => ({ from: mockFrom }
 const mockGenerateContent = vi.fn(async () => ({ text: '지금 반도체 테마가 좋아요' }));
 vi.mock('../lib/geminiClient', () => ({
   getGemini: () => ({ models: { generateContent: mockGenerateContent } }),
-  REASONING_MODEL: 'gemini-2.5-flash',
+  REASONING_MODEL: 'gemini-flash-latest',
 }));
 
 const capturedBackgroundPromises: Promise<any>[] = [];
@@ -73,7 +73,7 @@ describe('kakao webhook handler', () => {
 
     expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-flash-latest',
         contents: expect.stringContaining('실시간 흐름이랑 예상하락종목 알려줘'),
       }),
     );

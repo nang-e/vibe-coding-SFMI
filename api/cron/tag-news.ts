@@ -5,7 +5,7 @@ import { tagNewsItem } from '../../lib/tagNews';
 import { requireCronSecret } from '../../lib/auth';
 import type { Theme } from '../../lib/types';
 
-// Gemini free tier caps (gemini-2.5-flash-lite): 15 requests/minute, 1000 requests/day.
+// Gemini free tier caps (TAGGING_MODEL, lite tier): ~15 requests/minute, ~1000 requests/day.
 // Cap each run's batch well under the per-minute limit so a single invocation can't
 // blow through it, leaving any remaining backlog for the next scheduled run.
 const MAX_PER_RUN = 20;

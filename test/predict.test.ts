@@ -5,7 +5,7 @@ import { getGemini } from '../lib/geminiClient';
 
 vi.mock('../lib/geminiClient', () => ({
   getGemini: vi.fn(),
-  REASONING_MODEL: 'gemini-2.5-flash',
+  REASONING_MODEL: 'gemini-flash-latest',
 }));
 
 describe('buildPredictionDraft', () => {
@@ -36,7 +36,7 @@ describe('buildPredictionDraft', () => {
     });
     expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-flash-latest',
         contents: expect.stringContaining('축산업'),
         config: expect.objectContaining({
           responseMimeType: 'application/json',

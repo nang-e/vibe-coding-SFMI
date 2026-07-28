@@ -7,5 +7,8 @@ export function getGemini(): GoogleGenAI {
   return client;
 }
 
-export const TAGGING_MODEL = 'gemini-2.5-flash-lite';
-export const REASONING_MODEL = 'gemini-2.5-flash';
+// Pinned 2.5 model IDs got cut off for new API-key projects (404 "no longer
+// available to new users") — rolling aliases stay valid across Google's
+// version churn instead of needing another manual bump later.
+export const TAGGING_MODEL = 'gemini-flash-lite-latest';
+export const REASONING_MODEL = 'gemini-flash-latest';
