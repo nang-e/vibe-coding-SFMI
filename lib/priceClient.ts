@@ -29,6 +29,13 @@ export async function fetchDailyCloses(ticker: string, days: number): Promise<{ 
 export async function fetchLatestQuote(ticker: string): Promise<{ price: number; changePct: number }> {
   const result = await fetchChart(ticker, '1d', '5d');
   const { regularMarketPrice, chartPreviousClose } = result.meta;
-  const changePct = ((regularMarketPrice - chartPreviousClose) / chartPreviousClose) * 100;
+  // meta.chartPreviousClose is tied to the requested range's *start*, not necessarily
+  // yesterday's close (with range=5d it can be the close from ~6 sessions ago) — that
+  // produced implausible multi-day swings mislabeled as today's change_pct. Prefer the
+  // second-to-last close from the actual daily series; only fall back to the meta field
+  // if fewer than two closes came back.
+  const closes = result.indicators.quote[0].close.filter((c): c is number => c !== null);
+  const prevClose = closes.length >= 2 ? closes[closes.length - 2] : chartPreviousClose;
+  const changePct = ((regularMarketPrice - prevClose) / prevClose) * 100;
   return { price: regularMarketPrice, changePct };
 }
