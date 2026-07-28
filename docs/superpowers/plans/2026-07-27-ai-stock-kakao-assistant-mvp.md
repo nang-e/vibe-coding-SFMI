@@ -1872,6 +1872,96 @@ git commit -m "chore: add deployment config and Kakao channel setup guide"
 
 ---
 
+### Task 10: Replace Claude with Gemini free tier (cost follow-up)
+
+**Why:** After deploying, the user decided the ongoing pay-per-use cost of the Anthropic API wasn't acceptable for this personal project and asked for a free alternative. Google's Gemini API has a genuinely free tier (no card required) with daily/per-minute request caps. This task swaps the LLM provider while keeping every other task's interface untouched — `tagNewsItem`, `buildPredictionDraft`, and the webhook's answer generation keep the same function signatures, so Tasks 4, 5, and 7's callers need zero changes.
+
+**Confirmed via web search (2026-07-27):** free tier models are Gemini 2.5 Flash (10 RPM / 250 requests per day) and Gemini 2.5 Flash-Lite (15 RPM / 1,000 requests per day); Gemini 2.5 Pro's free tier was removed in April 2026. **Enabling billing on the Google Cloud project removes the free tier entirely for that project — do not enable billing.** SDK is `@google/genai`. Exact quotas change over time — re-verify against Google's current docs if requests start getting rate-limited (spec §10-style caveat).
+
+**Model assignment:** `TAGGING_MODEL = 'gemini-2.5-flash-lite'` (higher daily quota — tagging runs once per untagged news item, could be the higher-volume caller) and `REASONING_MODEL = 'gemini-2.5-flash'` (better quality — used only for prediction generation, grouped by theme, and webhook answers, both low-volume for a single-user bot).
+
+**Files:**
+- Create: `lib/geminiClient.ts` (replaces `lib/claudeClient.ts` — delete the old file)
+- Modify: `lib/tagNews.ts`, `lib/predict.ts`, `api/kakao/webhook.ts` (swap the client import and the API call shape; keep all exported function signatures identical)
+- Modify: `package.json` (remove `@anthropic-ai/sdk`, add `@google/genai`)
+- Modify: `.env.example` (replace `ANTHROPIC_API_KEY` with `GEMINI_API_KEY`)
+- Modify: `test/tagNews.test.ts`, `test/predict.test.ts`, `test/kakaoWebhook.test.ts` (update the mocked module path and mock response shape to match Gemini's response object instead of Anthropic's content-block array)
+
+**Interfaces:**
+- Consumes: nothing new from other tasks — this only touches the LLM call layer.
+- Produces: `getGemini(): GoogleGenAI`, `TAGGING_MODEL`, `REASONING_MODEL` from `lib/geminiClient.ts` — same names as the old `lib/claudeClient.ts` exports, so this is a drop-in replacement at the import-path level. `tagNewsItem`, `buildPredictionDraft`, and `buildAnswer` keep their exact existing signatures — nothing downstream of them changes.
+
+- [ ] **Step 1: Update dependencies**
+
+```bash
+npm uninstall @anthropic-ai/sdk
+npm install @google/genai
+```
+
+- [ ] **Step 2: Write `lib/geminiClient.ts`**
+
+```typescript
+import { GoogleGenAI } from '@google/genai';
+
+let client: GoogleGenAI | null = null;
+
+export function getGemini(): GoogleGenAI {
+  if (!client) client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  return client;
+}
+
+export const TAGGING_MODEL = 'gemini-2.5-flash-lite';
+export const REASONING_MODEL = 'gemini-2.5-flash';
+```
+
+Delete `lib/claudeClient.ts`.
+
+- [ ] **Step 3: Update `test/tagNews.test.ts` and `lib/tagNews.ts` for Gemini's structured-output shape**
+
+Gemini's Node SDK returns structured JSON via `responseMimeType: 'application/json'` + a `responseSchema` in the generation config, rather than Anthropic's forced `tool_use` block — adjust the mock and the implementation to match whatever shape `@google/genai` actually returns once installed (its response object's `.text` property is expected to hold the JSON string per current docs, but confirm against the installed package's types rather than trusting this verbatim, since the SDK has changed shape before). Update the test's mock to return a Gemini-shaped response object, then update `tagNewsItem` in `lib/tagNews.ts` to call `getGemini().models.generateContent({...})` with a `responseSchema` describing `{ tags: TagResult[] }`, parse `JSON.parse(response.text)`, and return `parsed.tags`. Keep the function signature (`tagNewsItem(item, themes): Promise<TagResult[]>`) and the Korean prompt content identical to the current implementation — only the call mechanics change.
+
+- [ ] **Step 4: Run test to verify it fails, then implement, then verify it passes**
+
+Run: `npx vitest run test/tagNews.test.ts` (expect FAIL until the implementation is updated to match the new mock, then PASS).
+
+- [ ] **Step 5: Update `test/predict.test.ts` and `lib/predict.ts` the same way**
+
+Same pattern as Step 3, but for `buildPredictionDraft`'s `{direction, rangeLow, rangeHigh, confidence, reasoning}` schema. Keep the signature and Korean prompt content identical.
+
+- [ ] **Step 6: Run test to verify it fails, then implement, then verify it passes**
+
+Run: `npx vitest run test/predict.test.ts`.
+
+- [ ] **Step 7: Update `test/kakaoWebhook.test.ts` and `api/kakao/webhook.ts`'s `buildAnswer`**
+
+`buildAnswer` doesn't need structured output — it's a plain text answer. Swap the `getClaude()`/`claude.messages.create(...)` call for `getGemini().models.generateContent({ model: REASONING_MODEL, contents: prompt })`, and read the answer text from whatever property the installed `@google/genai` version exposes (commonly `response.text`) instead of Anthropic's `response.content.find(c => c.type === 'text')`. Keep every other line of `buildAnswer` (the Supabase queries, the context-building, the disclaimer, the `waitUntil`/callback logic from Task 7) untouched.
+
+- [ ] **Step 8: Run test to verify it fails, then implement, then verify it passes**
+
+Run: `npx vitest run test/kakaoWebhook.test.ts`.
+
+- [ ] **Step 9: Update `.env.example` and `package.json`**
+
+Replace `ANTHROPIC_API_KEY=` with `GEMINI_API_KEY=` in `.env.example`. Confirm `package.json`'s `dependencies` no longer lists `@anthropic-ai/sdk` and now lists `@google/genai`.
+
+- [ ] **Step 10: Run the full suite and `tsc --noEmit`**
+
+Run: `npx vitest run` and `npx tsc --noEmit -p .` — both must be clean before committing.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add lib/geminiClient.ts lib/tagNews.ts lib/predict.ts api/kakao/webhook.ts package.json package-lock.json .env.example test/tagNews.test.ts test/predict.test.ts test/kakaoWebhook.test.ts
+git rm lib/claudeClient.ts
+git commit -m "feat: replace Anthropic Claude with Gemini free tier to eliminate per-use cost"
+```
+
+- [ ] **Step 12: Redeploy and re-verify live**
+
+Redeploy to Vercel with the updated files (same process as Task 9 Step 3). Once the user has a `GEMINI_API_KEY` (from https://aistudio.google.com/apikey, no card required) and has added it to Vercel's environment variables **without ever enabling billing on that Google Cloud project**, repeat Task 9 Step 6's live webhook test (POST to `/api/kakao/webhook` with a `webhook.site` callback URL) and confirm a real Gemini-generated answer arrives instead of the fallback error message.
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** §3 (collector) → Tasks 2–3; §3 (analyzer/predictor) → Tasks 4–5; §3 (Kakao webhook) → Task 7; §3 (feedback checker) → Task 8; §4 (data model) → Task 1; §5 (data flows A/B/C) → Tasks 2–8 combined via Task 6's pipeline; §6 (error handling) → try/catch-per-item throughout, low-sample handling in Task 5, 5s/callback handling flagged in Task 7; §7 (testing) → a Vitest suite per task; §8 (deploy & security) → Task 9, `.env`/`.gitignore` in Task 1. §9 (Phase 2–4) intentionally has no task — out of scope for this plan.
