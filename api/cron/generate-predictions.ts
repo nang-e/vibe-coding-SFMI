@@ -12,7 +12,7 @@ const CHECK_AFTER_DAYS = 3;
 // trigger is fresh domestic news or an overseas leading-indicator move —
 // this pipeline can run every 15-30 min and would otherwise spam duplicate
 // predictions (and duplicate Kakao pushes) for a theme that's still "hot".
-const COOLDOWN_HOURS = 3;
+const COOLDOWN_HOURS = 1;
 const PUSH_THRESHOLD_PCT = 1;
 
 function isRateLimitError(err: unknown): boolean {
