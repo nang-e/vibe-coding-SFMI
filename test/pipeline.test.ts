@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../api/cron/collect-prices', () => ({ run: vi.fn(async () => ({ updatedDaily: 1 })) }));
-vi.mock('../api/cron/collect-news', () => ({ run: vi.fn(async () => ({ inserted: 2 })) }));
-vi.mock('../api/cron/tag-news', () => ({ run: vi.fn(async () => ({ tagged: 1 })) }));
-vi.mock('../api/cron/generate-predictions', () => ({ run: vi.fn(async () => ({ created: 1 })) }));
+vi.mock('../lib/jobs/collectPrices', () => ({ run: vi.fn(async () => ({ updatedDaily: 1 })) }));
+vi.mock('../lib/jobs/collectNews', () => ({ run: vi.fn(async () => ({ inserted: 2 })) }));
+vi.mock('../lib/jobs/tagNews', () => ({ run: vi.fn(async () => ({ tagged: 1 })) }));
+vi.mock('../lib/jobs/generatePredictions', () => ({ run: vi.fn(async () => ({ created: 1 })) }));
 
 const capturedBackgroundPromises: Promise<any>[] = [];
 vi.mock('@vercel/functions', () => ({
@@ -11,10 +11,10 @@ vi.mock('@vercel/functions', () => ({
 }));
 
 import handler from '../api/cron/pipeline';
-import { run as collectPrices } from '../api/cron/collect-prices';
-import { run as collectNews } from '../api/cron/collect-news';
-import { run as tagNews } from '../api/cron/tag-news';
-import { run as generatePredictions } from '../api/cron/generate-predictions';
+import { run as collectPrices } from '../lib/jobs/collectPrices';
+import { run as collectNews } from '../lib/jobs/collectNews';
+import { run as tagNews } from '../lib/jobs/tagNews';
+import { run as generatePredictions } from '../lib/jobs/generatePredictions';
 
 describe('pipeline handler', () => {
   beforeEach(() => {

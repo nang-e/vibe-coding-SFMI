@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { requireCronSecret } from '../../lib/auth';
-import { run as collectPrices } from './collect-prices';
-import { run as collectNews } from './collect-news';
-import { run as tagNews } from './tag-news';
-import { run as generatePredictions } from './generate-predictions';
+import { run as collectPrices } from '../../lib/jobs/collectPrices';
+import { run as collectNews } from '../../lib/jobs/collectNews';
+import { run as tagNews } from '../../lib/jobs/tagNews';
+import { run as generatePredictions } from '../../lib/jobs/generatePredictions';
 
 // The full chain (price/news collection + Gemini tagging/predictions) can run
 // well past external cron callers' short request timeouts (e.g. cron-job.org).
