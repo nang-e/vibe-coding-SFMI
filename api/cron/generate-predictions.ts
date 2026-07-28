@@ -69,7 +69,7 @@ function formatPct(n: number): string {
 
 async function pushPredictionAlert(themeName: string, draft: PredictionDraft): Promise<void> {
   const arrow = draft.direction === 'down' ? '📉 하락' : '📈 상승';
-  const text = `${HEADER} ${themeName} 테마 ${arrow} 예상 ${formatPct(draft.rangeLow)}~${formatPct(draft.rangeHigh)}% (약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n\n${draft.reasoning}\n\n${DISCLAIMER}`;
+  const text = `${HEADER}\n${themeName} 테마 ${arrow} 예상 ${formatPct(draft.rangeLow)}~${formatPct(draft.rangeHigh)}% (약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n\n${draft.reasoning}\n\n${DISCLAIMER}`;
   await sendKakaoMemo(text);
 }
 
@@ -83,14 +83,14 @@ async function pushNoNewsHeartbeat(supabase: ReturnType<typeof getSupabase>): Pr
     .order('created_at', { ascending: false })
     .limit(1);
   if (error || !latest || latest.length === 0) {
-    await sendKakaoMemo(`${HEADER} 새로운 소식 없음 — 아직 쌓인 예측 기록도 없어요.\n\n${DISCLAIMER}`);
+    await sendKakaoMemo(`${HEADER}\n새로운 소식 없음 — 아직 쌓인 예측 기록도 없어요.\n\n${DISCLAIMER}`);
     return;
   }
 
   const p = latest[0] as any;
   const arrow = p.direction === 'down' ? '📉 하락' : '📈 상승';
   const themeName = p.themes?.name ?? '알 수 없음';
-  const text = `${HEADER} 새로운 소식 없음 — 가장 최근 예측을 다시 보여드려요.\n\n${themeName} 테마 ${arrow} 예상 ${formatPct(p.range_low)}~${formatPct(p.range_high)}% (${new Date(p.created_at).toLocaleString('ko-KR')} 기준, 약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n${p.reasoning}\n\n${DISCLAIMER}`;
+  const text = `${HEADER}\n새로운 소식 없음 — 가장 최근 예측을 다시 보여드려요.\n\n${themeName} 테마 ${arrow} 예상 ${formatPct(p.range_low)}~${formatPct(p.range_high)}% (${new Date(p.created_at).toLocaleString('ko-KR')} 기준, 약 ${CHECK_AFTER_DAYS}일 내 반영 예상)\n${p.reasoning}\n\n${DISCLAIMER}`;
   await sendKakaoMemo(text);
 }
 
